@@ -1,0 +1,153 @@
+
+/*----------------------------------------------------------------------------------
+
+Use this script to setup staging tables (bronze layer) and analytics tables (silver layer).  
+As well as stored procedures to transform the data.  These will be used by ADF
+
+----------------------------------------------------------------------------------*/
+
+
+
+-- Create a new database (if not already created)
+CREATE DATABASE IF NOT EXISTS ADFdemo;
+USE DATABASE ADFdemo;
+-- Create a new virtual warehouse (if not already created)
+CREATE WAREHOUSE IF NOT EXISTS ADFdemo WITH WAREHOUSE_SIZE='X-SMALL';
+CREATE SCHEMA IF NOT EXISTS Raw;
+CREATE SCHEMA IF NOT EXISTS Analytics;
+
+
+CREATE OR REPLACE TABLE Raw.Customer(
+	CustomerID int,
+	NameStyle STRING ,
+	Title STRING NULL,
+	FirstName STRING ,
+	MiddleName STRING NULL,
+	LastName STRING ,
+	Suffix STRING NULL,
+	CompanyName STRING NULL,
+	SalesPerson STRING NULL,
+	EmailAddress STRING NULL,
+	Phone STRING NULL,
+	PasswordHash STRING ,
+	PasswordSalt STRING ,
+	rowguid STRING ,
+	ModifiedDate datetime 
+);
+
+
+CREATE OR REPLACE TABLE Raw.Product(
+	ProductID int  ,
+	Name STRING ,
+	ProductNumber STRING ,
+	Color STRING NULL,
+	StandardCost decimal ,
+	ListPrice decimal ,
+	Size STRING NULL,
+	Weight decimal(8, 2) NULL,
+	ProductCategoryID int NULL,
+	ProductModelID int NULL,
+	SellStartDate datetime ,
+	SellEndDate datetime NULL,
+	DiscontinuedDate datetime NULL,
+	ThumbNailPhoto STRING NULL,
+	ThumbnailPhotoFileName STRING NULL,
+	rowguid STRING ,
+	ModifiedDate datetime 
+); 
+
+CREATE OR REPLACE TABLE Raw.ProductCategory(
+	ProductCategoryID int  ,
+	ParentProductCategoryID int NULL,
+	Name STRING ,
+	rowguid STRING ,
+	ModifiedDate datetime 
+);
+
+
+CREATE OR REPLACE TABLE Raw.SalesOrder(
+	SalesOrderID int ,
+	SalesOrderDetailID int ,
+	OrderQty int ,
+	ProductID int ,
+	UnitPrice DECIMAL ,
+	UnitPriceDiscount DECIMAL ,
+	LineTotal  DECIMAL,
+	rowguid STRING ,
+	ModifiedDate datetime ,
+	RevisionNumber int ,
+	OrderDate datetime ,
+	DueDate datetime ,
+	ShipDate datetime NULL,
+	Status int ,
+	SalesOrderNumber  STRING,
+	PurchaseOrderNumber STRING NULL,
+	AccountNumber STRING NULL,
+	CustomerID int ,
+	ShipToAddressID int NULL,
+	BillToAddressID int NULL,
+	ShipMethod STRING ,
+	CreditCardApprovalCode STRING NULL,
+	SubTotal DECIMAL ,
+	TaxAmt DECIMAL ,
+	Freight DECIMAL ,
+	TotalDue  DECIMAL,
+	Comment STRING NULL
+);
+
+CREATE TABLE IF NOT EXISTS Analytics.CustomerOrders (
+SalesOrderID int,
+orderdate datetime,
+DueDate datetime,
+ShipDate datetime,
+PurchaseOrderNumber STRING,
+AccountNumber STRING,
+TotalDue DECIMAL,
+rowguid STRING,
+Title STRING,
+FirstName STRING,
+LastName STRING,
+CompanyName STRING,
+EmailAddress STRING,
+LineTotal DECIMAL,
+Productname STRING,
+ProductNumber STRING,
+ProductCategoryName STRING
+);
+
+CREATE OR REPLACE PROCEDURE Analytics.InsertCustomerOrders()
+RETURNS VARCHAR
+LANGUAGE SQL
+AS
+$$
+BEGIN
+
+INSERT INTO Analytics.CustomerOrders
+SELECT
+    so.SalesOrderID,
+    so.orderdate,
+    so.DueDate,
+    so.ShipDate,
+    so.PurchaseOrderNumber,
+    so.AccountNumber,
+    so.TotalDue,
+so.rowguid,
+c.Title,
+c.FirstName,
+c.LastName,
+c.CompanyName,
+c.EmailAddress,
+so.LineTotal,
+p.name,
+p.ProductNumber,
+pc.Name
+  FROM raw.SalesOrder so
+    join raw.Customer c on c.CustomerID=so.CustomerID
+    join raw.Product p on p.ProductID=so.ProductID
+    join raw.ProductCategory pc on pc.ProductCategoryID=p.ProductCategoryID
+LEFT JOIN Analytics.CustomerOrders co on co.SalesOrderID=so.SalesOrderID 
+WHERE co.rowguid is null; 
+
+  RETURN 'Success';
+END;
+$$;
